@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2015 Miriam Cabero Mueller
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 3 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+# Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+import matplotlib
+matplotlib.use('agg')
+import pylab
+import numpy
+import logging
+import argparse
+import pycbc.psd
+import pycbc.results
+import pycbc.types
+import pycbc.fft
+from pycbc.waveform import get_fd_waveform
+
+from pycbc.fft.fftw import set_measure_level
+set_measure_level(0)
+
+parser = argparse.ArgumentParser(description=__doc__)
+
+parser.add_argument('--mass1', type=float, required=True,
+                    help="Mass of first component in solar masses.")
+parser.add_argument('--mass2', type=float, required=True,
+                    help="Mass of second component in solar masses.")
+parser.add_argument('--spin1z', type=float, required=True,
+                    help="Spin of the first component in the z direction.")
+parser.add_argument('--spin2z', type=float, required=True,
+                    help="Spin of the second component in the z direction.")
+parser.add_argument('--distance', type=float, default=1,
+                    help="Distance from the source (default %(default)s Mpc)")
+parser.add_argument('--approximant', required=True,
+                    help="Frequency domain approximant.")
+parser.add_argument('--f-lower', type=float, required=True,
+                    help="The starting frequency of the waveform.")
+parser.add_argument('--seg-length', type=float, default=256,
+                    help='Segment duration in seconds (default %(default)s)')
+parser.add_argument('--sample-rate', type=float, default=4096,
+                    help='Data sample rate in Hz (default %(default)s)')
+parser.add_argument('--output-wave')
+parser.add_argument('--output-whitened')
+parser.add_argument('--verbose', action='store_true')
+
+pycbc.psd.insert_psd_option_group(parser)
+opts = parser.parse_args()
+pycbc.init_logging(opts.verbose)
+pycbc.psd.verify_psd_options(opts, parser)
+
+seg_len = opts.seg_length
+sample_rate = opts.sample_rate
+delta_t = 1. / sample_rate
+delta_f = 1. / seg_len
+tlen = int(seg_len * sample_rate)
+flen = tlen / 2 + 1
+f_low = opts.f_lower
+#fac = pycbc.DYN_RANGE_FAC
+
+logging.info('Generating waveform')
+
+# Get the frequency domain waveform
+hplus, hcross = get_fd_waveform(approximant = opts.approximant, delta_f = delta_f,
+                         mass1 = opts.mass1, mass2 = opts.mass2,
+                         spin1z = opts.spin1z, spin2z = opts.spin2z,
+                         f_lower = f_low, distance = opts.distance )
+hplus.resize(flen)
+# Introduce a time shift in the waveform to get the right shape in the plots
+hplus.data *= numpy.exp( 1.j * numpy.pi * seg_len * hplus.sample_frequencies.data )
+
+# Plot the waveform in the time domain for sanity check (temporary)
+hp = pycbc.types.TimeSeries(pycbc.types.zeros(tlen), delta_t = delta_t)
+pycbc.fft.ifft(hplus, hp)
+
+fig=pylab.figure()
+ax=fig.gca()
+ax.plot(hp.sample_times, hp)
+ax.set_xlim( -(seg_len/2)-4, -(seg_len/2)+4 )
+ax.set_xlabel("Time")
+ax.set_ylabel("hplus")
+ax.set_title("%s BBH at %i Mpc" %(opts.approximant,opts.distance))
+fig.savefig("%s"%opts.output_wave)
+
+logging.info("Reading PSD")
+
+# Get the PSD
+psd = pycbc.psd.from_cli(opts, flen, delta_f, f_low)
+
+fig2=pylab.figure()
+ax2=fig2.gca()
+ax2.loglog(psd.sample_frequencies, psd**0.5)
+ax2.set_xlim(left=f_low)
+ax2.set_title("ASD for the ER8B data")
+ax2.set_xlabel("Frequencies")
+ax2.set_ylabel("Strain / $\\sqrt{\\rm Hz}$")
+fig2.savefig("/home/miriam.cabero/WWW/LSC/tests/investigating_autogating/ER8B_PSD")
+
+logging.info("Whitening waveform with the PSD provided")
+
+hplus.resize(flen)
+# Whiten waveform dividing by the ASD
+norm = sample_rate / 2.0 - f_low
+w_hplus = hplus / ( (psd * norm) ** 0.5 )
+w_hp = pycbc.types.TimeSeries( pycbc.types.zeros(tlen), delta_t )
+pycbc.fft.ifft(w_hplus, w_hp)
+
+fig3=pylab.figure()
+ax3=fig3.gca()
+ax3.plot(w_hp.sample_times, w_hp)
+ax3.set_xlim( -(seg_len/2)-4, -(seg_len/2)+4 )
+ax3.set_xlabel("Time")
+ax3.set_ylabel("Whitened hplus")
+ax3.set_title("Whitened %s BBH at %i Mpc" %(opts.approximant,opts.distance))
+fig3.savefig("%s"%opts.output_whitened)
+
+logging.info("Done")

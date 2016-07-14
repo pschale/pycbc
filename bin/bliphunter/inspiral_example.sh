@@ -1,0 +1,33 @@
+pycbc_inspiral \
+    --snr-threshold 7.5 \
+    --low-frequency-cutoff 30 \
+    --approximant SEOBNRv2_ROM_DoubleSpin \
+    --order -1 \
+    --cluster-method window \
+    --cluster-window 1 \
+    --chisq-bins "1.75*(get_freq('fSEOBNRv2Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)-60.)**0.5" \
+    --segment-length 256 \
+    --segment-start-pad 112 \
+    --segment-end-pad 16 \
+    --processing-scheme mkl \
+    --fft-backend mkl \
+    --psd-estimation median \
+    --psd-segment-length 16 \
+    --psd-segment-stride 8 \
+    --psd-inverse-length 16 \
+    --strain-high-pass 20 \
+    --pad-data 8 \
+    --sample-rate 4096 \
+    --frame-cache /home/miriam.cabero/blips/bliphunter/frames/H1_Sept12_Jan12.lcf \
+    --channel-name H1:GDS-CALIB_STRAIN \
+    --gps-start-time 1126942103 \
+    --gps-end-time 1126944151 \
+    --gating-file /home/miriam.cabero/blips/bliphunter/hwinj/H1_gating_hwinj_O1.txt \
+    --output H1_triggers_1126942103_2048.hdf \
+    --bank-file /home/miriam.cabero/blips/bliphunter/bank/BLIPHUNTERBANK.xml.gz \
+    --verbose \
+    --zpk-z 100. 100. 100. 100. 100. \
+    --zpk-p 1. 1. 1. 1. 1. \
+    --zpk-k 1e-10 \
+    --normalize-strain 1E-10 \
+    --verbose
